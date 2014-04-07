@@ -11,7 +11,7 @@ from werkzeug.exceptions import NotFound
 
 from flask_peewee.tests.base import FlaskPeeweeTestCase
 from flask_peewee.tests.test_app import app as flask_app, Message, User
-from flask_peewee.utils import (check_password, get_object_or_404,
+from flask_peewee.utils import (check_password, dict_to_obj, get_object_or_404,
                                 make_password, obj_to_dict)
 
 
@@ -97,3 +97,12 @@ class UtilsTestCase(FlaskPeeweeTestCase):
 
         self.assertEqual(expanded, {})
         self.assertEqual(not_expanded, {})
+
+    def test_dict_to_obj(self):
+        username, password, email = 'admin', 'admin', 'admin@example.com'
+        user = User(username=username, email=email)
+        user.set_password(password)
+        user.save()
+
+        user_dict = obj_to_dict(user)
+        self.assertEqual(dict_to_obj(user_dict, user), user)

@@ -76,6 +76,28 @@ def obj_to_dict(obj, expand_level=0):
             data[field_name] = obj_to_dict(value, expand_level=new_level)
     return data
 
+def dict_to_obj(data_dict, obj_or_model):
+    if isinstance(obj_or_model, Model):
+        model_instance = obj_or_model
+        model = type(obj_or_model)
+        check_fks = True
+    else:
+        model_instance = obj_or_model()
+        model = obj_or_model
+        check_fks = False
+
+    for field_name, value in data_dict.items():
+        field_obj = model._meta.fields[field_name]
+        if isinstance(value, dict):
+            rel_obj = field_obj.rel_model
+            if check_fks:
+                rel_obj = getattr(model_instance, field_name, rel_obj)
+            rel_inst = dict_to_obj(value, rel_obj)
+            setattr(model_instance, field_name, rel_inst)
+        else:
+            setattr(model_instance, field_name, field_obj.python_value(value))
+    return model_instance
+
 def get_dictionary_from_model(model, fields=None, exclude=None):
     model_class = type(model)
     data = {}
