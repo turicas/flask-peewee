@@ -1,16 +1,14 @@
+# coding: utf-8
+
 import math
 import random
 import re
 import sys
+
 from hashlib import sha1
 
-from flask import abort
-from flask import render_template
-from flask import request
-from peewee import DoesNotExist
-from peewee import ForeignKeyField
-from peewee import Model
-from peewee import SelectQuery
+from flask import abort, render_template, request
+from peewee import DoesNotExist, ForeignKeyField, Model, SelectQuery
 
 
 def get_object_or_404(query_or_model, *query):
@@ -66,6 +64,17 @@ def load_class(s):
     __import__(path)
     mod = sys.modules[path]
     return getattr(mod, klass)
+
+def obj_to_dict(obj, expand_level=0):
+    model = type(obj)
+    data = {}
+    new_level = expand_level - 1
+    for field_name in model._meta.get_field_names():
+        data[field_name] = obj._data.get(field_name)
+        value = getattr(obj, field_name)
+        if expand_level > 0 and isinstance(value, Model):
+            data[field_name] = obj_to_dict(value, expand_level=new_level)
+    return data
 
 def get_dictionary_from_model(model, fields=None, exclude=None):
     model_class = type(model)
