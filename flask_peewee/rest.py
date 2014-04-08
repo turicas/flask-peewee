@@ -1,3 +1,5 @@
+# coding: utf-8
+
 import functools
 import operator
 try:
@@ -40,8 +42,8 @@ class Authentication(object):
 
 class APIKeyAuthentication(Authentication):
     """
-    Requires a model that has at least two fields, "key" and "secret", which will
-    be searched for when authing a request.
+    Requires a model that has at least two fields, "key" and "secret", which
+    will be searched for when authing a request.
     """
     key_field = 'key'
     secret_field = 'secret'
@@ -55,12 +57,10 @@ class APIKeyAuthentication(Authentication):
     def get_query(self):
         return self.model.select()
 
-    def get_key(self, k, s):
+    def get_key(self, key, secret):
         try:
-            return self.get_query().where(
-                self._key_field==k,
-                self._secret_field==s
-            ).get()
+            return self.get_query().where(self._key_field == key,
+                                          self._secret_field == secret).get()
         except self.model.DoesNotExist:
             pass
 
@@ -98,7 +98,8 @@ class UserAuthentication(Authentication):
         if not basic_auth:
             return False
 
-        g.user = self.auth.authenticate(basic_auth.username, basic_auth.password)
+        g.user = self.auth.authenticate(basic_auth.username,
+                                        basic_auth.password)
         return g.user
 
 
@@ -121,7 +122,7 @@ class RestResource(object):
     fields = None
     exclude = None
 
-    # exclude certian fields from being exposed as filters -- for related fields
+    # exclude certian fields from being exposed as filters - for related fields
     # use "__" notation, e.g. user__password
     filter_exclude = None
     filter_fields = None
@@ -139,15 +140,16 @@ class RestResource(object):
         self.pk = model._meta.primary_key
 
         self.authentication = authentication
-        self.allowed_methods = allowed_methods or ['GET', 'POST', 'PUT', 'DELETE']
+        self.allowed_methods = allowed_methods or \
+                ['GET', 'POST', 'PUT', 'DELETE']
 
-        self._fields = {self.model: self.fields or self.model._meta.get_field_names()}
-        if self.exclude:
-            self._exclude = {self.model: self.exclude}
-        else:
-            self._exclude = {}
+        fields = self.fields or self.model._meta.get_field_names()
+        exclude = self.exclude or {}
+        self._fields = {self.model: fields}
+        self._exclude = {self.model: exclude}
 
-        self._filter_fields = self.filter_fields or self.model._meta.get_field_names()
+        self._filter_fields = self.filter_fields or \
+                self.model._meta.get_field_names()
         self._filter_exclude = self.filter_exclude or []
 
         self._resources = {}
@@ -156,19 +158,25 @@ class RestResource(object):
         if self.include_resources:
             for field_name, resource in self.include_resources.items():
                 field_obj = self.model._meta.fields[field_name]
-                resource_obj = resource(self.api, field_obj.rel_model, self.authentication, self.allowed_methods)
+                resource_obj = resource(self.api, field_obj.rel_model,
+                        self.authentication, self.allowed_methods)
                 self._resources[field_name] = resource_obj
                 self._fields.update(resource_obj._fields)
                 self._exclude.update(resource_obj._exclude)
 
-                self._filter_fields.extend(['%s__%s' % (field_name, ff) for ff in resource_obj._filter_fields])
-                self._filter_exclude.extend(['%s__%s' % (field_name, ff) for ff in resource_obj._filter_exclude])
+                new_fields = ['%s__%s' % (field_name, ff)
+                              for ff in resource_obj._filter_fields]
+                self._filter_fields.extend(new_fields)
+                new_exclude = ['%s__%s' % (field_name, ff)
+                               for ff in resource_obj._filter_exclude]
+                self._filter_exclude.extend(new_exclude)
 
             self._include_foreign_keys = False
         else:
             self._include_foreign_keys = True
 
-        self._field_tree = make_field_tree(self.model, self._filter_fields, self._filter_exclude, self.filter_recursive)
+        self._field_tree = make_field_tree(self.model, self._filter_fields,
+                self._filter_exclude, self.filter_recursive)
 
     def authorize(self):
         return self.authentication.authorize()
@@ -177,11 +185,8 @@ class RestResource(object):
         return slugify(self.model.__name__)
 
     def get_url_name(self, name):
-        return '%s.%s_%s' % (
-            self.api.blueprint.name,
-            self.get_api_name(),
-            name,
-        )
+        return '%s.%s_%s' % (self.api.blueprint.name, self.get_api_name(),
+                name)
 
     def get_query(self):
         return self.model.select()
@@ -206,11 +211,12 @@ class RestResource(object):
                 expr = key
                 op = 'eq'
             raw_filters.setdefault(expr, [])
-            raw_filters[expr].append((op, request.args.getlist(orig_key), negated))
+            new_filters = (op, request.args.getlist(orig_key), negated)
+            raw_filters[expr].append(new_filters)
 
-        # do a breadth first search across the field tree created by filter_fields,
-        # searching for matching keys in the request parameters -- when found,
-        # filter the query accordingly
+        # do a breadth first search across the field tree created by
+        # filter_fields, searching for matching keys in the request parameters.
+        # When found, filter the query accordingly
         queue = [(self._field_tree, '')]
         while queue:
             node, prefix = queue.pop(0)
@@ -218,7 +224,8 @@ class RestResource(object):
                 filter_expr = '%s%s' % (prefix, field.name)
                 if filter_expr in raw_filters:
                     for op, arg_list, negated in raw_filters[filter_expr]:
-                        query = self.apply_filter(query, filter_expr, op, arg_list, negated)
+                        query = self.apply_filter(query, filter_expr, op,
+                                arg_list, negated)
 
             for child_prefix, child_node in node.children.items():
                 queue.append((child_node, prefix + child_prefix + '__'))
@@ -294,8 +301,10 @@ class RestResource(object):
     def get_urls(self):
         return (
             ('/', self.require_method(self.api_list, ['GET', 'POST'])),
-            ('/<pk>/', self.require_method(self.api_detail, ['GET', 'POST', 'PUT', 'DELETE'])),
-            ('/<pk>/delete/', self.require_method(self.post_delete, ['POST', 'DELETE'])),
+            ('/<pk>/', self.require_method(self.api_detail,
+                ['GET', 'POST', 'PUT', 'DELETE'])),
+            ('/<pk>/delete/', self.require_method(self.post_delete,
+                ['POST', 'DELETE'])),
         )
 
     def check_get(self, obj=None):
@@ -324,7 +333,7 @@ class RestResource(object):
             return self.create()
 
     def api_detail(self, pk, method=None):
-        obj = get_object_or_404(self.get_query(), self.pk==pk)
+        obj = get_object_or_404(self.get_query(), self.pk == pk)
 
         method = method or request.method
 
@@ -347,7 +356,8 @@ class RestResource(object):
             desc, column = ordering.startswith('-'), ordering.lstrip('-')
             if column in self.model._meta.fields:
                 field = self.model._meta.fields[column]
-                query = query.order_by(field.asc() if not desc else field.desc())
+                order = field.asc() if not desc else field.desc()
+                query = query.order_by(order)
 
         return query
 
@@ -360,17 +370,14 @@ class RestResource(object):
 
         if current_page > 1:
             request_arguments[var] = current_page - 1
-            previous = url_for(self.get_url_name('api_list'), **request_arguments)
+            previous = url_for(self.get_url_name('api_list'),
+                    **request_arguments)
         if current_page < paginated_query.get_pages():
             request_arguments[var] = current_page + 1
             next = url_for(self.get_url_name('api_list'), **request_arguments)
 
-        return {
-            'model': self.get_api_name(),
-            'page': current_page,
-            'previous': previous,
-            'next': next,
-        }
+        return {'model': self.get_api_name(), 'page': current_page,
+                'previous': previous, 'next': next,}
 
     def paginated_object_list(self, filtered_query):
         try:
@@ -486,7 +493,7 @@ class RestAPI(object):
         self._registry[model] = provider(self, model, auth or self.default_auth, allowed_methods)
 
     def unregister(self, model):
-        del(self._registry[model])
+        del self._registry[model]
 
     def is_registered(self, model):
         return self._registry.get(model)
@@ -526,7 +533,8 @@ class RestAPI(object):
                 )
 
     def register_blueprint(self, **kwargs):
-        self.app.register_blueprint(self.blueprint, url_prefix=self.url_prefix, **kwargs)
+        self.app.register_blueprint(self.blueprint, url_prefix=self.url_prefix,
+                **kwargs)
 
     def setup(self):
         self.configure_routes()

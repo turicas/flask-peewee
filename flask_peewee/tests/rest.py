@@ -1,20 +1,19 @@
+# coding: utf-8
+
 from __future__ import with_statement
 
+import base64
+import datetime
 try:
     import simplejson as json
 except ImportError:
     import json
-
-import base64
-import datetime
 import unittest
 
 from flask import g
 
-from flask_peewee.rest import Authentication
-from flask_peewee.rest import RestAPI
-from flask_peewee.rest import RestResource
-from flask_peewee.rest import UserAuthentication
+from flask_peewee.rest import (Authentication, RestAPI, RestResource,
+                               UserAuthentication)
 from flask_peewee.tests.base import FlaskPeeweeTestCase
 from flask_peewee.tests.test_app import AModel
 from flask_peewee.tests.test_app import APIKey
@@ -43,7 +42,8 @@ class RestApiTestCase(FlaskPeeweeTestCase):
         return json.loads(response.data)
 
     def auth_headers(self, username, password):
-        return {'Authorization': 'Basic %s' % base64.b64encode('%s:%s' % (username, password))}
+        auth_hash = base64.b64encode('%s:%s' % (username, password))
+        return {'Authorization': 'Basic %s' % auth_hash}
 
     def conv_date(self, dt):
         return dt.strftime('%Y-%m-%d %H:%M:%S')
@@ -137,10 +137,8 @@ class RestApiResourceTestCase(RestApiTestCase):
 
         resp = self.app.get('/api/amodel/%s/' % self.a2.id)
         resp_json = self.response_json(resp)
-        self.assertEqual(resp_json, {
-            'id': self.a2.id,
-            'a_field': 'a2',
-        })
+        expected = {'id': self.a2.id, 'a_field': 'a2'}
+        self.assertEqual(resp_json, expected)
 
         # bmodel
         resp = self.app.get('/api/bmodel/?ordering=id')
@@ -192,31 +190,25 @@ class RestApiResourceTestCase(RestApiTestCase):
 
         resp = self.app.get('/api/fmodel/%s/' % self.f2.id)
         resp_json = self.response_json(resp)
-        self.assertEqual(resp_json, {
-            'id': self.f2.id,
-            'f_field': 'f2',
-            'e': None,
-        })
+        expected = {'id': self.f2.id, 'f_field': 'f2', 'e': None}
+        self.assertEqual(resp_json, expected)
 
     def post_to(self, url, data):
         return self.app.post(url, data=json.dumps(data))
 
     def test_resources_create(self):
         # a model
-        resp = self.post_to('/api/amodel/', {'a_field': 'ax'})
+        a_doc = {'a_field': 'ax'}
+        resp = self.post_to('/api/amodel/', a_doc)
         self.assertEqual(resp.status_code, 200)
-
         self.assertEqual(AModel.select().count(), 1)
         a_obj = AModel.get(a_field='ax')
-        self.assertEqual(json.loads(resp.data), {
-            'id': a_obj.id,
-            'a_field': 'ax',
-        })
+        expected = {'id': a_obj.id, 'a_field': 'ax'}
+        self.assertEqual(json.loads(resp.data), expected)
 
         # b model
         resp = self.post_to('/api/bmodel/', {'b_field': 'by', 'a': {'a_field': 'ay'}})
         self.assertEqual(resp.status_code, 200)
-
         self.assertEqual(BModel.select().count(), 1)
         self.assertEqual(AModel.select().count(), 2)
         b_obj = BModel.get(b_field='by')
@@ -235,7 +227,6 @@ class RestApiResourceTestCase(RestApiTestCase):
         # c model
         resp = self.post_to('/api/cmodel/', {'c_field': 'cz', 'b': {'b_field': 'bz', 'a': {'a_field': 'az'}}})
         self.assertEqual(resp.status_code, 200)
-
         self.assertEqual(CModel.select().count(), 1)
         self.assertEqual(BModel.select().count(), 2)
         self.assertEqual(AModel.select().count(), 3)
@@ -277,7 +268,8 @@ class RestApiResourceTestCase(RestApiTestCase):
             },
         })
 
-        resp = self.post_to('/api/fmodel/', {'f_field': 'fz'})
+        f_doc = {'f_field': 'fz'}
+        resp = self.post_to('/api/fmodel/', f_doc)
         self.assertEqual(resp.status_code, 200)
 
         self.assertEqual(FModel.select().count(), 2)
@@ -334,7 +326,6 @@ class RestApiResourceTestCase(RestApiTestCase):
         c_obj = CModel.get(id=self.c2.id)
         b_obj = BModel.get(id=self.b2.id)
         a_obj = AModel.get(id=self.a2.id)
-
         self.assertEqual(c_obj.b, b_obj)
         self.assertEqual(b_obj.a, a_obj)
         self.assertEqual(json.loads(resp.data), {
@@ -353,7 +344,6 @@ class RestApiResourceTestCase(RestApiTestCase):
         # f
         resp = self.post_to('/api/fmodel/%s/' % self.f1.id, {'f_field': 'f1-yyy', 'e': {'e_field': 'e1-yyy'}})
         self.assertEqual(resp.status_code, 200)
-
         self.assertEqual(FModel.select().count(), 2)
         self.assertEqual(EModel.select().count(), 2)
         f_obj = FModel.get(id=self.f1.id)
@@ -369,7 +359,8 @@ class RestApiResourceTestCase(RestApiTestCase):
             },
         })
 
-        resp = self.post_to('/api/fmodel/%s/' % self.f2.id, {'f_field': 'f2-yyy'})
+        f_doc = {'f_field': 'f2-yyy'}
+        resp = self.post_to('/api/fmodel/%s/' % self.f2.id, f_doc)
         self.assertEqual(resp.status_code, 200)
 
         self.assertEqual(FModel.select().count(), 2)
@@ -377,18 +368,15 @@ class RestApiResourceTestCase(RestApiTestCase):
         f_obj = FModel.get(id=self.f2.id)
 
         self.assertEqual(f_obj.e, None)
-        self.assertEqual(json.loads(resp.data), {
-            'id': f_obj.id,
-            'f_field': 'f2-yyy',
-            'e': None,
-        })
-
+        expected = {'id': f_obj.id, 'f_field': 'f2-yyy', 'e': None}
+        self.assertEqual(json.loads(resp.data), expected)
 
     def test_resource_edit_partial(self):
         self.create_test_models()
 
         # b model
-        resp = self.post_to('/api/bmodel/%s/' % self.b2.id, {'b_field': 'b2-yyy'})
+        b_doc = {'b_field': 'b2-yyy'}
+        resp = self.post_to('/api/bmodel/%s/' % self.b2.id, b_doc)
         self.assertEqual(resp.status_code, 200)
 
         self.assertEqual(BModel.select().count(), 2)
@@ -407,7 +395,8 @@ class RestApiResourceTestCase(RestApiTestCase):
         })
 
         # f model
-        resp = self.post_to('/api/fmodel/%s/' % self.f1.id, {'f_field': 'f1-zzz'})
+        f_doc = {'f_field': 'f1-zzz'}
+        resp = self.post_to('/api/fmodel/%s/' % self.f1.id, f_doc)
         self.assertEqual(resp.status_code, 200)
 
         self.assertEqual(FModel.select().count(), 2)
@@ -429,7 +418,8 @@ class RestApiResourceTestCase(RestApiTestCase):
         self.create_test_models()
 
         # b model
-        resp = self.post_to('/api/bmodel/%s/' % self.b2.id, {'a': self.a1.id})
+        b_doc = {'a': self.a1.id}
+        resp = self.post_to('/api/bmodel/%s/' % self.b2.id, b_doc)
         self.assertEqual(resp.status_code, 200)
 
         self.assertEqual(BModel.select().count(), 2)
@@ -448,7 +438,8 @@ class RestApiResourceTestCase(RestApiTestCase):
         })
 
         # f model
-        resp = self.post_to('/api/fmodel/%s/' % self.f2.id, {'e': self.e2.id})
+        f_doc = {'e': self.e2.id}
+        resp = self.post_to('/api/fmodel/%s/' % self.f2.id, f_doc)
         self.assertEqual(resp.status_code, 200)
 
         self.assertEqual(BModel.select().count(), 2)
@@ -500,7 +491,8 @@ class RestApiBasicTestCase(RestApiTestCase):
         notes = []
         for i in range(10):
             for user in users:
-                notes.append(Note.create(user=user, message='%s-%s' % (user.username, i)))
+                notes.append(Note.create(user=user,
+                                         message='%s-%s' % (user.username, i)))
         return users, notes
 
     def test_pagination(self):
@@ -576,7 +568,8 @@ class RestApiBasicTestCase(RestApiTestCase):
             'next': '',
             'page': 1,
         })
-        self.assertAPINotes(resp_json, self.normal.note_set.order_by(Note.id))
+        expected = self.normal.note_set.order_by(Note.id)
+        self.assertAPINotes(resp_json, expected)
 
         # do a filter following a join
         resp = self.app.get('/api/note/?user__username=admin&ordering=id')
@@ -588,18 +581,22 @@ class RestApiBasicTestCase(RestApiTestCase):
             'next': '',
             'page': 1,
         })
-        self.assertAPINotes(resp_json, self.admin.note_set.order_by(Note.id))
+        expected = self.admin.note_set.order_by(Note.id)
+        self.assertAPINotes(resp_json, expected)
 
         # filter multiple fields
         notes = list(self.admin.note_set.order_by(Note.id))
         third_id = notes[3].id
 
-        resp = self.app.get('/api/note/?user__username=admin&id__lt=%s&ordering=id' % third_id)
+        url = '/api/note/?user__username=admin&id__lt=%s&ordering=id'
+        resp = self.app.get(url % third_id)
         resp_json = self.response_json(resp)
         self.assertAPINotes(resp_json, notes[:3])
 
         # do a filter using multiple values
-        resp = self.app.get('/api/note/?user__username=admin&user__username=inactive&ordering=id')
+        url = ('/api/note/?user__username=admin&user__username=inactive'
+               '&ordering=id')
+        resp = self.app.get(url)
         resp_json = self.response_json(resp)
 
         self.assertAPIMeta(resp_json, {
@@ -608,7 +605,9 @@ class RestApiBasicTestCase(RestApiTestCase):
             'next': '',
             'page': 1,
         })
-        self.assertAPINotes(resp_json, Note.filter(user__in=[self.admin, self.inactive]).order_by(Note.id))
+        expected = Note.filter(user__in=[self.admin, self.inactive])\
+                       .order_by(Note.id)
+        self.assertAPINotes(resp_json, expected)
 
         # do a filter with a negation
         resp = self.app.get('/api/note/?-user__username=admin&ordering=id')
@@ -620,20 +619,23 @@ class RestApiBasicTestCase(RestApiTestCase):
         # https://github.com/coleifer/flask-peewee/issues/112
         resp = self.app.get('/api/note/?id__in=1,2,5')
         resp_json = self.response_json(resp)
-        self.assertAPINotes(resp_json, Note.filter(id__in=[1,2,5]).order_by(Note.id))
+        expected = Note.filter(id__in=[1, 2, 5]).order_by(Note.id)
+        self.assertAPINotes(resp_json, expected)
 
         # also test that the IN operator works with list of strings
         resp = self.app.get('/api/user/?username__in=admin,normal')
         resp_json = self.response_json(resp)
-        self.assertAPIUsers(resp_json, User.filter(username__in=['admin', 'normal']).order_by(User.id))
-
+        expected = User.filter(username__in=['admin', 'normal'])\
+                       .order_by(User.id)
+        self.assertAPIUsers(resp_json, expected)
 
     def test_filter_with_pagination(self):
         users, notes = self.get_users_and_notes()
         notes = list(self.admin.note_set.order_by(Note.id))
 
         # do a simple filter on a related model
-        resp = self.app.get('/api/note/?user__username=admin&limit=4&ordering=id')
+        url = '/api/note/?user__username=admin&limit=4&ordering=id'
+        resp = self.app.get(url)
         resp_json = self.response_json(resp)
 
         self.assertAPINotes(resp_json, notes[:4])
@@ -683,7 +685,8 @@ class RestApiUserAuthTestCase(RestApiTestCase):
         resp_json = self.response_json(resp)
 
         self.assertAPIResponse(resp_json, [])
-        self.assertAPIMeta(resp_json, {'model': 'note', 'next': '', 'page': 1, 'previous': ''})
+        expected = {'model': 'note', 'next': '', 'page': 1, 'previous': ''}
+        self.assertAPIMeta(resp_json, expected)
 
         self.create_notes()
 
@@ -714,11 +717,13 @@ class RestApiUserAuthTestCase(RestApiTestCase):
         self.assertEqual(resp.status_code, 401)
 
         # authorized, but user does not exist in database
-        resp = self.app.post('/api/note/', data=serialized, headers=self.auth_headers('xxx', 'xxx'))
+        resp = self.app.post('/api/note/', data=serialized,
+                headers=self.auth_headers('xxx', 'xxx'))
         self.assertEqual(resp.status_code, 401)
 
         # authorized, user in database
-        resp = self.app.post('/api/note/', data=serialized, headers=self.auth_headers('normal', 'normal'))
+        resp = self.app.post('/api/note/', data=serialized,
+                headers=self.auth_headers('normal', 'normal'))
         self.assertEqual(resp.status_code, 200)
 
     def test_create(self):
@@ -726,7 +731,8 @@ class RestApiUserAuthTestCase(RestApiTestCase):
         serialized = json.dumps(note_data)
 
         # authorized as an admin
-        resp = self.app.post('/api/note/', data=serialized, headers=self.auth_headers('normal', 'normal'))
+        resp = self.app.post('/api/note/', data=serialized,
+                headers=self.auth_headers('normal', 'normal'))
         self.assertEqual(resp.status_code, 200)
 
         new_note = Note.get(message='test')
@@ -748,11 +754,13 @@ class RestApiUserAuthTestCase(RestApiTestCase):
         self.assertEqual(resp.status_code, 401)
 
         # authorized, but user does not exist in database
-        resp = self.app.put(url, data=serialized, headers=self.auth_headers('xxx', 'xxx'))
+        resp = self.app.put(url, data=serialized,
+                headers=self.auth_headers('xxx', 'xxx'))
         self.assertEqual(resp.status_code, 401)
 
         # authorized, user in database
-        resp = self.app.put(url, data=serialized, headers=self.auth_headers('normal', 'normal'))
+        resp = self.app.put(url, data=serialized,
+                headers=self.auth_headers('normal', 'normal'))
         self.assertEqual(resp.status_code, 200)
 
     def test_edit(self):
@@ -764,7 +772,8 @@ class RestApiUserAuthTestCase(RestApiTestCase):
         url = '/api/note/%s/' % self.admin_note.id
 
         # authorized as an admin
-        resp = self.app.put(url, data=serialized, headers=self.auth_headers('normal', 'normal'))
+        resp = self.app.put(url, data=serialized,
+                headers=self.auth_headers('normal', 'normal'))
         self.assertEqual(resp.status_code, 200)
 
         note = Note.get(id=self.admin_note.id)
@@ -787,7 +796,8 @@ class RestApiUserAuthTestCase(RestApiTestCase):
         self.assertEqual(resp.status_code, 401)
 
         # authorized, user in database
-        resp = self.app.delete(url, headers=self.auth_headers('normal', 'normal'))
+        resp = self.app.delete(url,
+                headers=self.auth_headers('normal', 'normal'))
         self.assertEqual(resp.status_code, 200)
 
     def test_delete(self):
@@ -796,7 +806,8 @@ class RestApiUserAuthTestCase(RestApiTestCase):
         url = '/api/note/%s/' % self.admin_note.id
 
         # authorized as an admin
-        resp = self.app.delete(url, headers=self.auth_headers('normal', 'normal'))
+        resp = self.app.delete(url,
+                headers=self.auth_headers('normal', 'normal'))
         self.assertEqual(resp.status_code, 200)
 
         self.assertEqual(Note.select().count(), 1)
@@ -823,7 +834,8 @@ class RestApiOwnerAuthTestCase(RestApiTestCase):
         resp_json = self.response_json(resp)
 
         self.assertAPIResponse(resp_json, [])
-        self.assertAPIMeta(resp_json, {'model': 'message', 'next': '', 'page': 1, 'previous': ''})
+        expected = {'model': 'message', 'next': '', 'page': 1, 'previous': ''}
+        self.assertAPIMeta(resp_json, expected)
 
         self.create_messages()
 
@@ -854,11 +866,13 @@ class RestApiOwnerAuthTestCase(RestApiTestCase):
         self.assertEqual(resp.status_code, 401)
 
         # authorized, but user does not exist in database
-        resp = self.app.post('/api/message/', data=serialized, headers=self.auth_headers('xxx', 'xxx'))
+        resp = self.app.post('/api/message/', data=serialized,
+                headers=self.auth_headers('xxx', 'xxx'))
         self.assertEqual(resp.status_code, 401)
 
         # authorized, user in database
-        resp = self.app.post('/api/message/', data=serialized, headers=self.auth_headers('normal', 'normal'))
+        resp = self.app.post('/api/message/', data=serialized,
+                headers=self.auth_headers('normal', 'normal'))
         self.assertEqual(resp.status_code, 200)
 
     def test_create(self):
@@ -866,7 +880,8 @@ class RestApiOwnerAuthTestCase(RestApiTestCase):
         serialized = json.dumps(message_data)
 
         # authorized as an admin
-        resp = self.app.post('/api/message/', data=serialized, headers=self.auth_headers('normal', 'normal'))
+        resp = self.app.post('/api/message/', data=serialized,
+                headers=self.auth_headers('normal', 'normal'))
         self.assertEqual(resp.status_code, 200)
 
         new_message = Message.get(content='test')
@@ -888,15 +903,18 @@ class RestApiOwnerAuthTestCase(RestApiTestCase):
         self.assertEqual(resp.status_code, 401)
 
         # authorized, but user does not exist in database
-        resp = self.app.put(url, data=serialized, headers=self.auth_headers('xxx', 'xxx'))
+        resp = self.app.put(url, data=serialized,
+                headers=self.auth_headers('xxx', 'xxx'))
         self.assertEqual(resp.status_code, 401)
 
         # authorized, user in database, but not owner
-        resp = self.app.put(url, data=serialized, headers=self.auth_headers('admin', 'admin'))
+        resp = self.app.put(url, data=serialized,
+                headers=self.auth_headers('admin', 'admin'))
         self.assertEqual(resp.status_code, 403)
 
         # authorized, user in database, is owner
-        resp = self.app.put(url, data=serialized, headers=self.auth_headers('normal', 'normal'))
+        resp = self.app.put(url, data=serialized,
+                headers=self.auth_headers('normal', 'normal'))
         self.assertEqual(resp.status_code, 200)
 
         obj = Message.get(id=self.normal_message.id)
@@ -911,7 +929,8 @@ class RestApiOwnerAuthTestCase(RestApiTestCase):
         url = '/api/message/%s/' % self.normal_message.id
 
         # authorized as normal
-        resp = self.app.put(url, data=serialized, headers=self.auth_headers('normal', 'normal'))
+        resp = self.app.put(url, data=serialized,
+                headers=self.auth_headers('normal', 'normal'))
         self.assertEqual(resp.status_code, 200)
 
         message = Message.get(id=self.normal_message.id)
@@ -934,11 +953,13 @@ class RestApiOwnerAuthTestCase(RestApiTestCase):
         self.assertEqual(resp.status_code, 401)
 
         # authorized, user in database, not owner
-        resp = self.app.delete(url, headers=self.auth_headers('admin', 'admin'))
+        resp = self.app.delete(url,
+                headers=self.auth_headers('admin', 'admin'))
         self.assertEqual(resp.status_code, 403)
 
         # authorized, user in database, is owner
-        resp = self.app.delete(url, headers=self.auth_headers('normal', 'normal'))
+        resp = self.app.delete(url,
+                headers=self.auth_headers('normal', 'normal'))
         self.assertEqual(resp.status_code, 200)
 
     def test_delete(self):
@@ -947,7 +968,8 @@ class RestApiOwnerAuthTestCase(RestApiTestCase):
         url = '/api/message/%s/' % self.normal_message.id
 
         # authorized as an admin
-        resp = self.app.delete(url, headers=self.auth_headers('normal', 'normal'))
+        resp = self.app.delete(url,
+                headers=self.auth_headers('normal', 'normal'))
         self.assertEqual(resp.status_code, 200)
 
         self.assertEqual(Message.select().count(), 1)
@@ -962,7 +984,8 @@ class RestApiAdminAuthTestCase(RestApiTestCase):
         resp_json = self.response_json(resp)
 
         self.assertAPIResponse(resp_json, [])
-        self.assertAPIMeta(resp_json, {'model': 'user', 'next': '', 'page': 1, 'previous': ''})
+        expected = {'model': 'user', 'next': '', 'page': 1, 'previous': ''}
+        self.assertAPIMeta(resp_json, expected)
 
         self.create_users()
 
@@ -1000,15 +1023,18 @@ class RestApiAdminAuthTestCase(RestApiTestCase):
         self.assertEqual(resp.status_code, 401)
 
         # authorized, but user does not exist in database
-        resp = self.app.post('/api/user/', data=serialized, headers=self.auth_headers('xxx', 'xxx'))
+        resp = self.app.post('/api/user/', data=serialized,
+                headers=self.auth_headers('xxx', 'xxx'))
         self.assertEqual(resp.status_code, 401)
 
         # authorized, user in database, but not an administrator
-        resp = self.app.post('/api/user/', data=serialized, headers=self.auth_headers('normal', 'normal'))
+        resp = self.app.post('/api/user/', data=serialized,
+                headers=self.auth_headers('normal', 'normal'))
         self.assertEqual(resp.status_code, 401)
 
         # authorized as an admin
-        resp = self.app.post('/api/user/', data=serialized, headers=self.auth_headers('admin', 'admin'))
+        resp = self.app.post('/api/user/', data=serialized,
+                headers=self.auth_headers('admin', 'admin'))
         self.assertEqual(resp.status_code, 200)
 
     def test_create(self):
@@ -1020,7 +1046,8 @@ class RestApiAdminAuthTestCase(RestApiTestCase):
         serialized = json.dumps(user_data)
 
         # authorized as an admin
-        resp = self.app.post('/api/user/', data=serialized, headers=self.auth_headers('admin', 'admin'))
+        resp = self.app.post('/api/user/', data=serialized,
+                headers=self.auth_headers('admin', 'admin'))
         self.assertEqual(resp.status_code, 200)
 
         new_user = User.get(username='test')
@@ -1042,15 +1069,18 @@ class RestApiAdminAuthTestCase(RestApiTestCase):
         self.assertEqual(resp.status_code, 401)
 
         # authorized, but user does not exist in database
-        resp = self.app.put(url, data=serialized, headers=self.auth_headers('xxx', 'xxx'))
+        resp = self.app.put(url, data=serialized,
+                headers=self.auth_headers('xxx', 'xxx'))
         self.assertEqual(resp.status_code, 401)
 
         # authorized, user in database, but not an administrator
-        resp = self.app.put(url, data=serialized, headers=self.auth_headers('normal', 'normal'))
+        resp = self.app.put(url, data=serialized,
+                headers=self.auth_headers('normal', 'normal'))
         self.assertEqual(resp.status_code, 401)
 
         # authorized as an admin
-        resp = self.app.put(url, data=serialized, headers=self.auth_headers('admin', 'admin'))
+        resp = self.app.put(url, data=serialized,
+                headers=self.auth_headers('admin', 'admin'))
         self.assertEqual(resp.status_code, 200)
 
     def test_edit(self):
@@ -1062,7 +1092,8 @@ class RestApiAdminAuthTestCase(RestApiTestCase):
         url = '/api/user/%s/' % self.normal.id
 
         # authorized as an admin
-        resp = self.app.put(url, data=serialized, headers=self.auth_headers('admin', 'admin'))
+        resp = self.app.put(url, data=serialized,
+                headers=self.auth_headers('admin', 'admin'))
         self.assertEqual(resp.status_code, 200)
 
         user = User.get(id=self.normal.id)
@@ -1085,11 +1116,13 @@ class RestApiAdminAuthTestCase(RestApiTestCase):
         self.assertEqual(resp.status_code, 401)
 
         # authorized, user in database, but not an administrator
-        resp = self.app.delete(url, headers=self.auth_headers('normal', 'normal'))
+        resp = self.app.delete(url,
+                headers=self.auth_headers('normal', 'normal'))
         self.assertEqual(resp.status_code, 401)
 
         # authorized as an admin
-        resp = self.app.delete(url, headers=self.auth_headers('admin', 'admin'))
+        resp = self.app.delete(url,
+                headers=self.auth_headers('admin', 'admin'))
         self.assertEqual(resp.status_code, 200)
 
     def test_delete(self):
@@ -1098,7 +1131,8 @@ class RestApiAdminAuthTestCase(RestApiTestCase):
         url = '/api/user/%s/' % self.normal.id
 
         # authorized as an admin
-        resp = self.app.delete(url, headers=self.auth_headers('admin', 'admin'))
+        resp = self.app.delete(url,
+                headers=self.auth_headers('admin', 'admin'))
         self.assertEqual(resp.status_code, 200)
 
         self.assertEqual(User.select().count(), 2)
@@ -1131,19 +1165,20 @@ class RestApiKeyAuthTestCase(RestApiTestCase):
             self.assertEqual(g.api_key, self.k1)
             resp_json = self.response_json(resp)
 
-            self.assertAPITestModels(resp_json, [
-                self.tm1,
-                self.tm2,
-            ])
-            self.assertAPIMeta(resp_json, {'model': 'testmodel', 'next': '', 'page': 1, 'previous': ''})
+            self.assertAPITestModels(resp_json, [self.tm1, self.tm2])
+            expected = {'model': 'testmodel', 'next': '', 'page': 1,
+                        'previous': ''}
+            self.assertAPIMeta(resp_json, expected)
 
     def test_auth_headers(self):
         with self.flask_app.test_client() as c:
-            resp = c.get('/api/testmodel/', headers={'key': 'k', 'secret': 'foo'})
+            resp = c.get('/api/testmodel/',
+                    headers={'key': 'k', 'secret': 'foo'})
             self.assertEqual(resp.status_code, 401)
             self.assertEqual(g.api_key, None)
 
-            resp = c.get('/api/testmodel/', headers={'key': 'k', 'secret': 's'})
+            resp = c.get('/api/testmodel/',
+                    headers={'key': 'k', 'secret': 's'})
             self.assertEqual(resp.status_code, 200)
             self.assertEqual(g.api_key, self.k1)
 
