@@ -91,7 +91,10 @@ def dict_to_obj(data_dict, obj_or_model):
         if isinstance(value, dict):
             rel_obj = field_obj.rel_model
             if check_fks:
-                rel_obj = getattr(model_instance, field_name, rel_obj)
+                try:
+                    rel_obj = getattr(model_instance, field_name)
+                except field_obj.rel_model.DoesNotExist:
+                    pass
             rel_inst = dict_to_obj(value, rel_obj)
             setattr(model_instance, field_name, rel_inst)
         else:
