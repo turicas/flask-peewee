@@ -1,7 +1,6 @@
 # coding: utf-8
 
 import functools
-import operator
 import os
 import re
 try:
@@ -9,22 +8,19 @@ try:
 except ImportError:
     import json
 
-from flask import (Blueprint Response, abort, flash, redirect, render_template,
-                   request, url_for)
-from peewee import (BooleanField, DateField, DateTimeField, ForeignKeyField,
-                    TextField)
+from flask import (Blueprint, Response, abort, flash, redirect,
+                   render_template, request, url_for)
+from peewee import ForeignKeyField
 from werkzeug import Headers
-from wtforms import fields, widgets
-from wtfpeewee.fields import (ModelHiddenField, ModelSelectField,
-                              ModelSelectMultipleField)
+from wtfpeewee.fields import ModelHiddenField, ModelSelectField
 from wtfpeewee.orm import model_form
 
 from flask_peewee.filters import (FilterForm, FilterMapping,
                                   FilterModelConverter)
 from flask_peewee.forms import (BaseModelConverter, ChosenAjaxSelectWidget,
                                 LimitedModelSelectField)
-from flask_peewee.utils import (PaginatedQuery, get_next, path_to_models,
-                                slugify)
+from flask_peewee.utils import (PaginatedQuery, get_next, obj_to_dict,
+                                path_to_models, slugify)
 
 
 current_dir = os.path.dirname(__file__)
@@ -54,7 +50,8 @@ class AdminFilterModelConverter(FilterModelConverter):
         if field.name in (self.model_admin.foreign_key_lookups or ()):
             data_source = url_for(self.model_admin.get_url_name('ajax_list'))
             widget = ChosenAjaxSelectWidget(data_source, field.name)
-            form_field = LimitedModelSelectField(model=field.rel_model, widget=widget, **kwargs)
+            form_field = LimitedModelSelectField(model=field.rel_model,
+                    widget=widget, **kwargs)
         else:
             form_field = ModelSelectField(model=field.rel_model, **kwargs)
         return field.name, form_field
@@ -71,7 +68,7 @@ class ModelAdmin(object):
     # a model instance, though in the latter case they will not be sortable
     columns = None
 
-    # exclude certian fields from being exposed as filters -- for related fields
+    # exclude certian fields from being exposed as filters - for related fields
     # use "__" notation, e.g. user__password
     filter_exclude = None
     filter_fields = None
@@ -82,7 +79,8 @@ class ModelAdmin(object):
 
     form_converter = AdminModelConverter
 
-    # foreign_key_field --> related field to search on, e.g. {'user': 'username'}
+    # foreign_key_field --> related field to search on,
+    # e.g. {'user': 'username'}
     foreign_key_lookups = None
 
     # delete behavior
@@ -153,7 +151,7 @@ class ModelAdmin(object):
         return self.model.select()
 
     def get_object(self, pk):
-        return self.get_query().where(self.pk==pk).get()
+        return self.get_query().where(self.pk == pk).get()
 
     def get_urls(self):
         return (
@@ -187,7 +185,8 @@ class ModelAdmin(object):
             desc, column = ordering.startswith('-'), ordering.lstrip('-')
             if self.column_is_sortable(column):
                 field = self.model._meta.fields[column]
-                query = query.order_by(field.asc() if not desc else field.desc())
+                order = field.asc() if not desc else field.desc()
+                query = query.order_by(order)
         return query
 
     def get_extra_context(self):
@@ -208,9 +207,11 @@ class ModelAdmin(object):
         if request.method == 'POST':
             id_list = request.form.getlist('id')
             if request.form['action'] == 'delete':
-                return redirect(url_for(self.get_url_name('delete'), id=id_list))
+                return redirect(url_for(self.get_url_name('delete'),
+                    id=id_list))
             else:
-                return redirect(url_for(self.get_url_name('export'), id=id_list))
+                return redirect(url_for(self.get_url_name('export'),
+                    id=id_list))
 
         return render_template(self.templates['index'],
             model_admin=self,
@@ -240,7 +241,8 @@ class ModelAdmin(object):
             form = Form(request.form)
             if form.validate():
                 instance = self.save_model(instance, form, True)
-                flash('New %s saved successfully' % self.get_display_name(), 'success')
+                flash('New %s saved successfully' % self.get_display_name(),
+                        'success')
                 return self.dispatch_save_redirect(instance)
         else:
             form = Form()
@@ -264,7 +266,9 @@ class ModelAdmin(object):
             form = Form(request.form, obj=instance)
             if form.validate():
                 self.save_model(instance, form, False)
-                flash('Changes to %s saved successfully' % self.get_display_name(), 'success')
+                message = 'Changes to %s saved successfully' % \
+                        self.get_display_name()
+                flash(message, 'success')
                 return self.dispatch_save_redirect(instance)
         else:
             form = Form(obj=instance)
@@ -277,7 +281,6 @@ class ModelAdmin(object):
         )
 
     def collect_objects(self, obj):
-        deps = obj.dependencies()
         objects = []
 
         for query, fk in obj.dependencies():
@@ -308,7 +311,9 @@ class ModelAdmin(object):
             for obj in query:
                 obj.delete_instance(recursive=self.delete_recursive)
 
-            flash('Successfully deleted %s %ss' % (count, self.get_display_name()), 'success')
+            message = 'Successfully deleted %s %ss' % \
+                    (count, self.get_display_name())
+            flash(message, 'success')
             return redirect(url_for(self.get_url_name('index')))
 
         return render_template(self.templates['delete'], **dict(
@@ -324,7 +329,8 @@ class ModelAdmin(object):
         for field in model._meta.get_fields():
             if isinstance(field, ForeignKeyField) and field not in seen:
                 seen.add(field)
-                self.collect_related_fields(field.rel_model, accum, path + [field.name], seen)
+                self.collect_related_fields(field.rel_model, accum,
+                        path + [field.name], seen)
             elif model != self.model:
                 accum.setdefault((model, path_str), [])
                 accum[(model, path_str)].append(field)
@@ -349,7 +355,8 @@ class ModelAdmin(object):
         if request.method == 'POST':
             raw_fields = request.form.getlist('fields')
             export = Export(query, related, raw_fields)
-            return export.json_response('export-%s.json' % self.get_admin_name())
+            filename = 'export-%s.json' % self.get_admin_name()
+            return export.json_response(filename)
 
         return render_template(self.templates['export'],
             model_admin=self,
@@ -390,14 +397,17 @@ class ModelAdmin(object):
 
             data = []
 
-            # if the field is nullable, include the "None" option at the top of the list
+            # if the field is nullable, include the "None" option at the top of
+            # the list
             if field.null:
                 data.append({'id': '__None', 'repr': 'None'})
 
-            data.extend([{'id': obj.get_id(), 'repr': unicode(obj)} for obj in pq.get_list()])
+            data.extend([{'id': obj.get_id(), 'repr': unicode(obj)}
+                         for obj in pq.get_list()])
 
-        json_data = json.dumps({'prev_page': prev_page, 'next_page': next_page, 'object_list': data})
-        return Response(json_data, mimetype='application/json')
+        data = {'prev_page': prev_page, 'next_page': next_page,
+                'object_list': data}
+        return Response(json.dumps(data), mimetype='application/json')
 
 
 class AdminPanel(object):
@@ -428,7 +438,8 @@ class AdminPanel(object):
         return {}
 
     def render(self):
-        return render_template(self.get_template_name(), panel=self, **self.get_context())
+        return render_template(self.get_template_name(), panel=self,
+                **self.get_context())
 
 
 class AdminTemplateHelper(object):
@@ -452,7 +463,8 @@ class AdminTemplateHelper(object):
         if not querystring:
             return '%s=%s' % (key, val)
         else:
-            querystring = re.sub('%s(?:[^&]+)?&?' % key, '', querystring).rstrip('&')
+            querystring = re.sub('%s(?:[^&]+)?&?' % key, '', querystring)\
+                    .rstrip('&')
             return ('%s&%s=%s' % (querystring, key, val)).lstrip('&')
 
     def get_verbose_name(self, model, column_name):
@@ -464,7 +476,8 @@ class AdminTemplateHelper(object):
             return field.verbose_name
 
     def get_model_admins(self):
-        return {'model_admins': self.admin.get_model_admins(), 'branding': self.admin.branding}
+        return {'model_admins': self.admin.get_model_admins(),
+                'branding': self.admin.branding}
 
     def get_admin_url(self, obj):
         model_admin = self.admin.get_admin_for(type(obj))
@@ -477,7 +490,8 @@ class AdminTemplateHelper(object):
             return model_admin.get_display_name()
         return model_class.__name__
 
-    def apply_prefix(self, field_name, prefix_accum, field_prefix, rel_prefix='fr_', rel_sep='-'):
+    def apply_prefix(self, field_name, prefix_accum, field_prefix,
+            rel_prefix='fr_', rel_sep='-'):
         accum = []
         for prefix in prefix_accum:
             accum.append('%s%s' % (rel_prefix, prefix))
@@ -485,17 +499,21 @@ class AdminTemplateHelper(object):
         return rel_sep.join(accum)
 
     def prepare_environment(self):
-        self.app.template_context_processors[None].append(self.get_model_admins)
+        jinja_globals = self.app.jinja_env.globals
+        jinja_filters = self.app.jinja_env.filters
 
-        self.app.jinja_env.globals['get_model_field'] = self.get_model_field
-        self.app.jinja_env.globals['get_form_field'] = self.get_form_field
-        self.app.jinja_env.globals['get_verbose_name'] = self.get_verbose_name
-        self.app.jinja_env.filters['fix_underscores'] = self.fix_underscores
-        self.app.jinja_env.globals['update_querystring'] = self.update_querystring
-        self.app.jinja_env.globals['get_admin_url'] = self.get_admin_url
-        self.app.jinja_env.globals['get_model_name'] = self.get_model_name
+        self.app.template_context_processors[None]\
+                .append(self.get_model_admins)
 
-        self.app.jinja_env.filters['apply_prefix'] = self.apply_prefix
+        jinja_globals['get_model_field'] = self.get_model_field
+        jinja_globals['get_form_field'] = self.get_form_field
+        jinja_globals['get_verbose_name'] = self.get_verbose_name
+        jinja_globals['update_querystring'] = self.update_querystring
+        jinja_globals['get_admin_url'] = self.get_admin_url
+        jinja_globals['get_model_name'] = self.get_model_name
+
+        jinja_filters['fix_underscores'] = self.fix_underscores
+        jinja_filters['apply_prefix'] = self.apply_prefix
 
 
 class Admin(object):
@@ -522,7 +540,8 @@ class Admin(object):
             user = self.auth.get_logged_in_user()
 
             if not user:
-                login_url = url_for('%s.login' % self.auth.blueprint.name, next=get_next())
+                login_url = url_for('%s.login' % self.auth.blueprint.name,
+                        next=get_next())
                 return redirect(login_url)
 
             if not self.check_user_permission(user):
@@ -547,25 +566,24 @@ class Admin(object):
 
     def register(self, model, admin_class=ModelAdmin):
         model_admin = admin_class(self, model)
-        admin_name = model_admin.get_admin_name()
-
         self._registry[model] = model_admin
 
     def unregister(self, model):
-        del(self._registry[model])
+        del self._registry[model]
 
     def register_panel(self, title, panel):
         panel_instance = panel(self, title)
         self._panels[title] = panel_instance
 
     def unregister_panel(self, title):
-        del(self._panels[title])
+        del self._panels[title]
 
     def get_admin_for(self, model):
         return self._registry.get(model)
 
     def get_model_admins(self):
-        return sorted(self._registry.values(), key=lambda o: o.get_admin_name())
+        return sorted(self._registry.values(),
+                key=lambda o: o.get_admin_name())
 
     def get_panels(self):
         return sorted(self._panels.values(), key=lambda o: o.slug)
@@ -640,9 +658,9 @@ class Export(object):
                 if '__' not in p:
                     next_model = query.model_class
                 else:
-                    next, _ = p.rsplit('__', 1)
-                    next_model = self.alias_to_model[next]
-                    query = ensure_join(query, next_model, next)
+                    next_, _ = p.rsplit('__', 1)
+                    next_model = self.alias_to_model[next_]
+                    query = ensure_join(query, next_model, next_)
 
                 joined.add(m)
                 return query.switch(next_model).join(m)
