@@ -26,9 +26,7 @@ from flask_peewee.rest import RestAPI
 from flask_peewee.rest import RestResource
 from flask_peewee.rest import RestrictOwnerResource
 from flask_peewee.rest import UserAuthentication
-from flask_peewee.utils import get_object_or_404
-from flask_peewee.utils import make_password
-from flask_peewee.utils import object_list
+from flask_peewee.utils import get_object_or_404, make_password, object_list
 
 
 class TestFlask(Flask):
@@ -58,16 +56,22 @@ class User(db.Model, BaseUser):
 
     def __unicode__(self):
         return self.username
-    
+
     def message_count(self):
         return self.message_set.count()
 
+class CustomUser(db.Model, BaseUser):
+    username = CharField()
+    email = CharField()
+
+    def __unicode__(self):
+        return '%s,%s' % (self.username, self.email)
 
 class Message(db.Model):
     user = ForeignKeyField(User)
     content = TextField()
     pub_date = DateTimeField(default=datetime.datetime.now)
-    
+
     def __unicode__(self):
         return '%s: %s' % (self.user, self.content)
 
@@ -80,7 +84,7 @@ class Note(db.Model):
 
 class TestModel(db.Model):
     data = TextField()
-    
+
     class Meta:
         order_by = ('id',)
 
@@ -95,7 +99,7 @@ class BModel(db.Model):
 class CModel(db.Model):
     b = ForeignKeyField(BModel)
     c_field = CharField()
-    
+
 class DModel(db.Model):
     c = ForeignKeyField(CModel)
     d_field = CharField()
@@ -119,12 +123,12 @@ class APIKey(db.Model):
 
 class NotePanel(AdminPanel):
     template_name = 'admin/notes.html'
-    
+
     def get_urls(self):
         return (
             ('/create/', self.create),
         )
-    
+
     def create(self):
         if request.method == 'POST':
             if request.form.get('message'):
@@ -134,7 +138,7 @@ class NotePanel(AdminPanel):
                 )
         next = request.form.get('next') or self.dashboard_url()
         return redirect(next)
-    
+
     def get_context(self):
         return {
             'note_list': Note.select().order_by(('created_date', 'desc')).paginate(1, 3)
@@ -180,7 +184,7 @@ admin.register_panel('Notes', NotePanel)
 
 class UserResource(RestResource):
     exclude = ('password', 'email',)
-    
+
     def get_query(self):
         return User.select().where(User.active==True)
 
@@ -209,6 +213,7 @@ api = RestAPI(app, default_auth=user_auth)
 
 api.register(Message, RestrictOwnerResource)
 api.register(User, UserResource, auth=admin_auth)
+
 api.register(Note)
 api.register(TestModel, auth=api_key_auth)
 api.register(AModel, AResource, auth=dummy_auth)
@@ -218,6 +223,22 @@ api.register(CModel, CResource, auth=dummy_auth)
 api.register(EModel, EResource, auth=dummy_auth)
 api.register(FModel, FResource, auth=dummy_auth)
 
+class CustomSerDes(object):
+    mimetype = 'text/plain'
+
+    def serialize_message(self, message):
+        return '\n'.join(['%s: %s' % (key, value)
+                          for key, value in message.items()])
+
+    def serialize_object(self, obj, obj_type, fields, expand=0):
+        return '%s,%s' % (obj.username, obj.email)
+
+    def deserialize_object(self, data, obj):
+        obj.username, obj.email = data.split('|')
+        return obj
+
+custom_serdes = CustomSerDes()
+api.register(CustomUser, RestResource, serializer_deserializer=custom_serdes)
 
 # views
 @app.route('/')

@@ -484,8 +484,10 @@ class RestAPI(object):
 
         self.default_auth = default_auth or Authentication()
 
-    def register(self, model, provider=RestResource, auth=None, allowed_methods=None):
-        self._registry[model] = provider(self, model, auth or self.default_auth, allowed_methods)
+    def register(self, model, provider=RestResource, auth=None,
+            allowed_methods=None, **kwargs):
+        self._registry[model] = provider(self, model,
+                auth or self.default_auth, allowed_methods, **kwargs)
 
     def unregister(self, model):
         del self._registry[model]

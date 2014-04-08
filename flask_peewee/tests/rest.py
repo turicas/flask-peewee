@@ -15,19 +15,11 @@ from flask import g
 from flask_peewee.rest import (Authentication, RestAPI, RestResource,
                                UserAuthentication)
 from flask_peewee.tests.base import FlaskPeeweeTestCase
-from flask_peewee.tests.test_app import AModel
-from flask_peewee.tests.test_app import APIKey
-from flask_peewee.tests.test_app import BModel
-from flask_peewee.tests.test_app import CModel
-from flask_peewee.tests.test_app import EModel
-from flask_peewee.tests.test_app import FModel
-from flask_peewee.tests.test_app import Message
-from flask_peewee.tests.test_app import Note
-from flask_peewee.tests.test_app import TestModel
-from flask_peewee.tests.test_app import User
-from flask_peewee.utils import check_password
-from flask_peewee.utils import get_next
-from flask_peewee.utils import make_password
+from flask_peewee.tests.test_app import (AModel, APIKey, BModel, CModel,
+                                         EModel, FModel, Message, Note,
+                                         TestModel, User, CustomUser)
+from flask_peewee.utils import (check_password, get_next, make_password,
+                                obj_to_dict)
 
 
 class RestApiTestCase(FlaskPeeweeTestCase):
@@ -1150,3 +1142,34 @@ class RestApiKeyAuthTestCase(RestApiTestCase):
 
             self.assertEqual(TestModel.select().count(), 3)
             self.assertEqual(resp_json['data'], 't3')
+
+
+class TestCustomSerializerDeserializer(FlaskPeeweeTestCase):
+    def test_custom_serializer_deserializer(self):
+        username, password, email = 'admin', 'admin', 'admin@example.com'
+        user = User(username=username, email=email)
+        user.set_password(password)
+        user.save()
+
+        auth_hash = base64.b64encode('%s:%s' % (username, password))
+        headers = {'Authorization': 'Basic %s' % auth_hash}
+
+        custom_users = []
+        for index in range(10):
+            username = 'user%s' % index
+            email = 'user%s@example.com' % index
+
+            # serializes it how the deserializer understand
+            serialized_user = '%s|%s' % (username, email)
+            user = self.app.post('/api/customuser/', data=serialized_user,
+                    headers=headers)
+
+            # save this user serialized as the serializer will return
+            custom_users.append('%s,%s' % (username, email))
+
+        response_data = json.loads(self.app.get('/api/customuser/').data)
+        returned_users = response_data['objects']
+        self.assertEqual(set(returned_users), set(custom_users))
+
+        response = self.app.post('/api/customuser/1/delete/', headers=headers)
+        self.assertEqual(response.data, 'deleted: 1')

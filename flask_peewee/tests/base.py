@@ -11,6 +11,7 @@ from flask_peewee.tests.test_app import FModel
 from flask_peewee.tests.test_app import Message
 from flask_peewee.tests.test_app import Note
 from flask_peewee.tests.test_app import User
+from flask_peewee.tests.test_app import CustomUser
 
 
 class FlaskPeeweeTestCase(unittest.TestCase):
@@ -19,6 +20,8 @@ class FlaskPeeweeTestCase(unittest.TestCase):
         Message.drop_table(True)
         User.drop_table(True)
         User.create_table()
+        CustomUser.drop_table(True)
+        CustomUser.create_table()
         Message.create_table()
         Note.create_table()
 
