@@ -1,0 +1,15 @@
+*.db
+*.egg-info/*
+*.pyc
+*~
+.*.sw?
+.coverage
+.directory
+.env
+.idea/*
+.idea/*
+.tox
+MANIFEST
+build/*
+dist/*
+reg_settings.py
