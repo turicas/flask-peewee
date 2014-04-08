@@ -105,3 +105,10 @@ class SerializerDeserializerTestCase(FlaskPeeweeTestCase):
                 {User: self.user_fields})
         deserialized = self.serdes.deserialize_object(serialized, User)
         self.assertEqual(deserialized, self.admin)
+
+    def test_serialize_message(self):
+        message = {'error': 'some error',
+                   'datetime': datetime.datetime(2014, 4, 8, 1, 33, 10)}
+        serialized = self.serdes.serialize_message(message)
+        message['datetime'] = message['datetime'].strftime(DATETIME_FMT)
+        self.assertEqual(json.loads(serialized), message)

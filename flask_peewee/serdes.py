@@ -49,6 +49,9 @@ def deserialize_value(value):
 class JSONSerializerDeserializer(object):
     '''Basic Serializer/Deserializer - uses JSON for the job'''
 
+    def serialize_message(self, message):
+        return json.dumps(serialize_value(message))
+
     def serialize_object(self, obj, obj_type, fields, expand=0, jsonify=True):
         '''Serialize an object (instance of `peewee.Model`) to JSON'''
 
