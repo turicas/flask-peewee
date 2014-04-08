@@ -49,6 +49,8 @@ def deserialize_value(value):
 class JSONSerializerDeserializer(object):
     '''Basic Serializer/Deserializer - uses JSON for the job'''
 
+    mimetype = 'application/json'
+
     def serialize_message(self, message):
         return json.dumps(serialize_value(message))
 

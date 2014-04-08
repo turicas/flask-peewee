@@ -1,3 +1,5 @@
+# coding: utf-8
+
 import functools
 import operator
 import os
@@ -7,41 +9,25 @@ try:
 except ImportError:
     import json
 
-from flask import Blueprint
-from flask import Response
-from flask import abort
-from flask import flash
-from flask import redirect
-from flask import render_template
-from flask import request
-from flask import url_for
-from flask_peewee.filters import FilterForm
-from flask_peewee.filters import FilterMapping
-from flask_peewee.filters import FilterModelConverter
-from flask_peewee.forms import BaseModelConverter
-from flask_peewee.forms import ChosenAjaxSelectWidget
-from flask_peewee.forms import LimitedModelSelectField
-from flask_peewee.serializer import Serializer
-from flask_peewee.utils import PaginatedQuery
-from flask_peewee.utils import get_next
-from flask_peewee.utils import path_to_models
-from flask_peewee.utils import slugify
-from peewee import BooleanField
-from peewee import DateField
-from peewee import DateTimeField
-from peewee import ForeignKeyField
-from peewee import TextField
+from flask import (Blueprint Response, abort, flash, redirect, render_template,
+                   request, url_for)
+from peewee import (BooleanField, DateField, DateTimeField, ForeignKeyField,
+                    TextField)
 from werkzeug import Headers
-from wtforms import fields
-from wtforms import widgets
-from wtfpeewee.fields import ModelHiddenField
-from wtfpeewee.fields import ModelSelectField
-from wtfpeewee.fields import ModelSelectMultipleField
+from wtforms import fields, widgets
+from wtfpeewee.fields import (ModelHiddenField, ModelSelectField,
+                              ModelSelectMultipleField)
 from wtfpeewee.orm import model_form
+
+from flask_peewee.filters import (FilterForm, FilterMapping,
+                                  FilterModelConverter)
+from flask_peewee.forms import (BaseModelConverter, ChosenAjaxSelectWidget,
+                                LimitedModelSelectField)
+from flask_peewee.utils import (PaginatedQuery, get_next, path_to_models,
+                                slugify)
 
 
 current_dir = os.path.dirname(__file__)
-
 
 class AdminModelConverter(BaseModelConverter):
     def __init__(self, model_admin, additional=None):
@@ -680,23 +666,20 @@ class Export(object):
         return clone
 
     def json_response(self, filename='export.json'):
-        serializer = Serializer()
         prepared_query = self.prepare_query()
-        field_dict = {}
-        for field in prepared_query._select:
-            field_dict.setdefault(field.model_class, [])
-            field_dict[field.model_class].append(field.name)
 
         def generate():
             i = prepared_query.count()
             yield '[\n'
             for obj in prepared_query:
                 i -= 1
-                yield json.dumps(serializer.serialize_object(obj, field_dict))
+                yield json.dumps(obj_to_dict(obj))
                 if i > 0:
                     yield ',\n'
             yield '\n]'
         headers = Headers()
         headers.add('Content-Type', 'application/javascript')
-        headers.add('Content-Disposition', 'attachment; filename=%s' % filename)
-        return Response(generate(), mimetype='text/javascript', headers=headers, direct_passthrough=True)
+        headers.add('Content-Disposition',
+                'attachment; filename=%s' % filename)
+        return Response(generate(), mimetype='text/javascript',
+                headers=headers, direct_passthrough=True)

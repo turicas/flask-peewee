@@ -7,23 +7,12 @@ try:
 except ImportError:
     import json
 
-from flask import Blueprint
-from flask import Response
-from flask import abort
-from flask import g
-from flask import redirect
-from flask import request
-from flask import session
-from flask import url_for
-from peewee import *
-from peewee import DJANGO_MAP
+from flask import Blueprint, Response, g, request, url_for
+from peewee import DJANGO_MAP, DQ, Model
 
 from flask_peewee.filters import make_field_tree
-from flask_peewee.serializer import Deserializer
-from flask_peewee.serializer import Serializer
-from flask_peewee.utils import PaginatedQuery
-from flask_peewee.utils import get_object_or_404
-from flask_peewee.utils import slugify
+from flask_peewee.serdes import JSONSerializerDeserializer
+from flask_peewee.utils import get_object_or_404, PaginatedQuery, slugify
 
 
 class Authentication(object):
@@ -134,7 +123,8 @@ class RestResource(object):
     # delete behavior
     delete_recursive = True
 
-    def __init__(self, rest_api, model, authentication, allowed_methods=None):
+    def __init__(self, rest_api, model, authentication, allowed_methods=None,
+            serializer_deserializer=None):
         self.api = rest_api
         self.model = model
         self.pk = model._meta.primary_key
@@ -177,6 +167,18 @@ class RestResource(object):
 
         self._field_tree = make_field_tree(self.model, self._filter_fields,
                 self._filter_exclude, self.filter_recursive)
+
+        self._fields_to_serialize = {}
+        for model, fields in self._fields.items():
+            fields = set(fields)
+            if model in self._exclude:
+                fields -= set(self._exclude[model])
+            if fields:
+                self._fields_to_serialize[model] = list(fields)
+
+        self.serdes = serializer_deserializer
+        if self.serdes is None:
+            self.serdes = JSONSerializerDeserializer()
 
     def authorize(self):
         return self.authentication.authorize()
@@ -248,34 +250,29 @@ class RestResource(object):
                 constructor({query_expr: val}) for val in arg_list]
             return query.filter(reduce(operator.or_, query_clauses))
 
-    def get_serializer(self):
-        return Serializer()
-
-    def get_deserializer(self):
-        return Deserializer()
-
     def prepare_data(self, obj, data):
         """
         Hook for modifying outgoing data
         """
         return data
 
+    def serialize_message(self, message):
+        return self.serdes.serialize_message(message)
+
     def serialize_object(self, obj):
-        s = self.get_serializer()
-        return self.prepare_data(
-            obj, s.serialize_object(obj, self._fields, self._exclude)
-        )
+        serialized = self.serdes.serialize_object(obj, self.model,
+                self._fields_to_serialize)
+        return self.prepare_data(obj, serialized)
+
+    def deserialize_object(self, data, obj=None):
+        if obj is None:
+            obj = self.model()
+        return self.serdes.deserialize_object(data, obj)
 
     def serialize_query(self, query):
-        s = self.get_serializer()
-        return [
-            self.prepare_data(obj, s.serialize_object(obj, self._fields, self._exclude)) \
-                for obj in query
-        ]
-
-    def deserialize_object(self, data, instance):
-        d = self.get_deserializer()
-        return d.deserialize_object(instance, data)
+        prepare_data = self.prepare_data
+        serialize = self.serialize_object
+        return [prepare_data(obj, serialize(obj)) for obj in query]
 
     def response_forbidden(self):
         return Response('Forbidden', 403)
@@ -287,8 +284,7 @@ class RestResource(object):
         return Response('Bad request', 400)
 
     def response(self, data):
-        kwargs = {} if request.is_xhr else {'indent': 2}
-        return Response(json.dumps(data, **kwargs), mimetype='application/json')
+        return Response(data, mimetype=self.serdes.mimetype)
 
     def require_method(self, func, methods):
         @functools.wraps(func)
@@ -318,10 +314,6 @@ class RestResource(object):
 
     def check_delete(self, obj):
         return True
-
-    def save_object(self, instance, raw_data):
-        instance.save()
-        return instance
 
     def api_list(self):
         if not getattr(self, 'check_%s' % request.method.lower())():
@@ -393,10 +385,12 @@ class RestResource(object):
 
         query_dict = self.serialize_query(pq.get_list())
 
-        return self.response({
+        # TODO: change this when ser/des for collections are available
+        serialized_response = json.dumps({
             'meta': meta_data,
             'objects': query_dict,
         })
+        return self.response(serialized_response)
 
     def object_list(self):
         query = self.get_query()
@@ -413,47 +407,48 @@ class RestResource(object):
     def object_detail(self, obj):
         return self.response(self.serialize_object(obj))
 
-    def save_related_objects(self, instance, data):
-        for k, v in data.items():
-            if k in self._resources and isinstance(v, dict):
-                rel_resource = self._resources[k]
-                rel_obj, rel_models = rel_resource.deserialize_object(v, getattr(instance, k))
-                rel_resource.save_related_objects(rel_obj, v)
-                setattr(instance, k, rel_resource.save_object(rel_obj, v))
+    def save_object(self, obj):
+        obj.save()
+
+    def save_related_objects(self, obj):
+        model = type(obj)
+        fields = model._meta.get_field_names()
+        for field in fields:
+            rel_obj = getattr(obj, field)
+            if field in self._resources and isinstance(rel_obj, Model):
+                rel_resource = self._resources[field]
+                rel_obj.save()
+                rel_resource.save_related_objects(rel_obj)
 
     def read_request_data(self):
         data = request.data or request.form.get('data') or ''
-        return json.loads(data)
+        return data
 
     def create(self):
+        data = self.read_request_data()
         try:
-            data = self.read_request_data()
+            obj = self.deserialize_object(data)
         except ValueError:
             return self.response_bad_request()
-
-        obj, models = self.deserialize_object(data, self.model())
-
-        self.save_related_objects(obj, data)
-        obj = self.save_object(obj, data)
-
+        self.save_object(obj)
+        self.save_related_objects(obj)
         return self.response(self.serialize_object(obj))
 
     def edit(self, obj):
+        data = self.read_request_data()
         try:
-            data = self.read_request_data()
+            obj = self.deserialize_object(data, obj)
         except ValueError:
             return self.response_bad_request()
-
-        obj, models = self.deserialize_object(data, obj)
-
-        self.save_related_objects(obj, data)
-        obj = self.save_object(obj, data)
+        self.save_object(obj)
+        self.save_related_objects(obj)
 
         return self.response(self.serialize_object(obj))
 
     def delete(self, obj):
         res = obj.delete_instance(recursive=self.delete_recursive)
-        return self.response({'deleted': res})
+        serialized = self.serialize_message({'deleted': res})
+        return self.response(serialized)
 
 
 class RestrictOwnerResource(RestResource):
@@ -473,9 +468,9 @@ class RestrictOwnerResource(RestResource):
     def check_delete(self, obj):
         return self.validate_owner(g.user, obj)
 
-    def save_object(self, instance, raw_data):
-        self.set_owner(instance, g.user)
-        return super(RestrictOwnerResource, self).save_object(instance, raw_data)
+    def save_object(self, obj):
+        self.set_owner(obj, g.user)
+        return super(RestrictOwnerResource, self).save_object(obj)
 
 
 class RestAPI(object):
